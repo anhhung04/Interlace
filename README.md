@@ -28,7 +28,8 @@ Easily turn single threaded command line applications into a fast, multi-threade
 Install using:
 
 ```bash
-$ python3 setup.py install
+$ uv sync
+$ uv run interlace --help
 ```
 Dependencies will then be installed and Interlace will be added to your path as `interlace`.
 

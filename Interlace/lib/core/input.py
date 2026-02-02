@@ -2,7 +2,7 @@ import functools
 import itertools
 import os.path
 import sys
-from argparse import ArgumentParser
+
 from io import TextIOWrapper
 from random import choice
 
@@ -196,7 +196,8 @@ class InputHelper(object):
 
         def parse_and_group_target_specs(target_specs, nocidr):
             str_targets = set()
-            ips_list = list()
+            main_ipset = IPSet()
+            
             for target_spec in target_specs:
                 if (
                     target_spec.startswith(".") or
@@ -209,18 +210,13 @@ class InputHelper(object):
                         start_ip, post_dash_segment = target_spec.split("-")
                         end_ip = start_ip.rsplit(".", maxsplit=1)[0] + "." + \
                             post_dash_segment
-                        target_spec = IPRange(start_ip, end_ip)
+                        main_ipset.add(IPRange(start_ip, end_ip))
                     elif "*" in target_spec:
-                        target_spec = glob_to_iprange(target_spec)
+                        main_ipset.add(glob_to_iprange(target_spec))
                     else:  # str IP addresses and str CIDR notations
-                        if "/" in target_spec:
-                            target_spec = IPSet((target_spec,))
-                        else:
-                            target_spec = [target_spec]
-
-                    for i in target_spec:
-                        ips_list.append(str(i))
-            return (str_targets, set(ips_list))
+                        main_ipset.add(target_spec)
+            
+            return (str_targets, main_ipset)
 
         str_targets, ipset_targets = parse_and_group_target_specs(
             target_specs=target_specs,
@@ -381,144 +377,4 @@ class InputHelper(object):
         return tasks_generator_func
 
 
-class InputParser(object):
-    def __init__(self):
-        self._parser = self.setup_parser()
 
-    def parse(self, argv):
-        return self._parser.parse_args(argv)
-
-    @staticmethod
-    def setup_parser():
-        parser = ArgumentParser()
-
-        #Is stdin attached?
-        requireTargetArg = True
-        if not sys.stdin.isatty():
-            requireTargetArg = False
-
-        targets = parser.add_mutually_exclusive_group(required=requireTargetArg)
-
-        targets.add_argument(
-            '-t', dest='target', required=False,
-            help='Specify a target or domain name either in comma format, '
-                 'CIDR notation, glob notation, or a single target.'
-        )
-
-        targets.add_argument(
-            '-tL', dest='target_list', required=False,
-            help='Specify a list of targets or domain names.',
-            metavar="FILE",
-            type=lambda x: InputHelper.readable_file(parser, x)
-        )
-
-        # exclusions group
-        exclusions = parser.add_mutually_exclusive_group()
-
-        exclusions.add_argument(
-            '-e', dest='exclusions', required=False,
-            help='Specify an exclusion either in comma format, '
-                 'CIDR notation, or a single target.'
-        )
-
-        exclusions.add_argument(
-            '-eL', dest='exclusions_list', required=False,
-            help='Specify a list of exclusions.',
-            metavar="FILE",
-            type=lambda x: InputHelper.readable_file(parser, x)
-        )
-
-        parser.add_argument(
-            '-threads', dest='threads', required=False,
-            help="Specify the maximum number of threads to run (DEFAULT:5)",
-            default=5,
-            type=lambda x: InputHelper.check_positive(parser, x)
-        )
-
-        parser.add_argument(
-            '-timeout', dest='timeout', required=False,
-            help="Command timeout in seconds (DEFAULT:600)",
-            default=600,
-            type=lambda x: InputHelper.check_positive(parser, x)
-        )
-
-        parser.add_argument(
-            '-pL', dest='proxy_list', required=False,
-            help='Specify a list of proxies.',
-            metavar="FILE",
-            type=lambda x: InputHelper.readable_file(parser, x)
-        )
-
-        commands = parser.add_mutually_exclusive_group(required=True)
-        commands.add_argument(
-            '-c', dest='command',
-            help='Specify a single command to execute.'
-        )
-
-        commands.add_argument(
-            '-cL', dest='command_list', required=False,
-            help='Specify a list of commands to execute',
-            metavar="FILE",
-            type=lambda x: InputHelper.readable_file(parser, x)
-        )
-
-        parser.add_argument(
-            '-o', dest='output',
-            help='Specify an output folder variable that can be used in commands as _output_'
-        )
-
-        parser.add_argument(
-            '-p', dest='port',
-            help='Specify a port variable that can be used in commands as _port_'
-        )
-
-        parser.add_argument(
-            '--proto', dest='proto',
-            help='Specify protocols that can be used in commands as _proto_'
-        )
-
-        parser.add_argument(
-            '-rp', dest='realport',
-            help='Specify a real port variable that can be used in commands as _realport_'
-        )
-
-        parser.add_argument(
-            '-random', dest='random',
-            help='Specify a directory of files that can be randomly used in commands as _random_',
-            type=lambda x: InputHelper.check_path(parser, x)
-        )
-
-        parser.add_argument(
-            '--no-cidr', dest='nocidr', action='store_true', default=False,
-            help='If set then CIDR notation in a target file will not be automatically '
-                 'be expanded into individual hosts.'
-        )
-
-        parser.add_argument(
-            '--no-color', dest='nocolor', action='store_true', default=False,
-            help='If set then any foreground or background colours will be '
-                 'stripped out.'
-        )
-
-        parser.add_argument(
-            '--no-bar', '--sober', dest='sober', action='store_true', default=False,
-            help='If set then progress bar will be stripped out'
-        )
-
-        parser.add_argument(
-            '--repeat', dest='repeat',
-            help='repeat the given command x number of times.'
-        )
-
-        output_types = parser.add_mutually_exclusive_group()
-        output_types.add_argument(
-            '-v', '--verbose', dest='verbose', action='store_true', default=False,
-            help='If set then verbose output will be displayed in the terminal.'
-        )
-        output_types.add_argument(
-            '--silent', dest='silent', action='store_true', default=False,
-            help='If set only findings will be displayed and banners '
-                 'and other information will be redacted.'
-        )
-
-        return parser

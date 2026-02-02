@@ -3,7 +3,7 @@ import os
 import queue
 import platform
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import Event
+from threading import Event
 from tqdm import tqdm
 
 from Interlace.lib.core.output import OutputHelper, Level
@@ -90,8 +90,10 @@ class Worker(object):
         while True:
             try:
                 task = self.queue.get(timeout=1)
+                if task is None:
+                    return
             except queue.Empty:
-                return
+                continue # Keep waiting for producer
 
             self.output_helper.terminal(Level.THREAD, task.name(), "Added to Queue")
 
@@ -105,32 +107,57 @@ class Worker(object):
                 self.output_helper.terminal(Level.ERROR, task.name(), f"Task failed: {e}")
 
 
-class Pool(object):
-    def __init__(self, max_workers, task_queue, timeout, output, progress_bar, silent=False, output_helper=None):
-        max_workers = int(max_workers)
-        tasks_count = next(task_queue)
-        if not tasks_count:
-            raise ValueError("The queue is empty")
 
-        self.queue = queue.Queue()
-        for task in task_queue:
-            self.queue.put(task)
+import threading
+
+class Pool(object):
+    def __init__(self, max_workers, task_generator, timeout, output, progress_bar, silent=False, output_helper=None):
+        self.max_workers = int(max_workers)
+        # tasks_generator is actually an iterator where the first item is count
+        self.tasks_count = next(task_generator)
+        if not self.tasks_count:
+            raise ValueError("The queue is empty")
+        
+        self.task_iterator = task_generator
+        
+        # Use a bounded queue to limit memory usage
+        # Size = max_workers * 2 is usually a good buffer
+        self.queue = queue.Queue(maxsize=self.max_workers * 2) 
 
         self.timeout = timeout
         self.output = output
-        self.max_workers = min(tasks_count, max_workers)
+        # max_workers limited by total tasks is still a reasonable optimization if count is small
+        self.max_workers = min(self.tasks_count, self.max_workers)
 
         self.output_helper = output_helper or OutputHelper()
-        self.tqdm = tqdm(total=tasks_count) if not progress_bar and not silent else True
+        self.tqdm = tqdm(total=self.tasks_count) if not progress_bar and not silent else True
+
+    def _producer(self):
+        """Iterates through tasks and populates the queue."""
+        try:
+            for task in self.task_iterator:
+                self.queue.put(task)
+        except Exception as e:
+            self.output_helper.terminal(Level.ERROR, "Producer", f"Task generation failed: {e}")
+        finally:
+            # Signal workers to exit
+            for _ in range(self.max_workers):
+                self.queue.put(None)
 
     def run(self):
+        # Start producer thread
+        producer_thread = threading.Thread(target=self._producer)
+        producer_thread.start()
+
         workers = [Worker(self.queue, self.timeout, self.output, self.tqdm, self.output_helper)
                    for _ in range(self.max_workers)]
 
         with ThreadPoolExecutor(self.max_workers) as executors:
             for worker in workers:
                 executors.submit(worker)
-
+        
+        # Join producer to ensure it finished (though workers finishing implies queue is empty/done)
+        producer_thread.join()
 
 # test harness
 if __name__ == "__main__":
