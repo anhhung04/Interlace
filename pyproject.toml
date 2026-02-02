@@ -1,6 +1,6 @@
 [project]
 name = "Interlace"
-version = "1.9.8"
+version = "1.9.9"
 description = "Adds Multi Threading and CIDR support for applications that don't support it, or better managed threads for those that do. Multiple commands over multiple hosts."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -11,7 +11,7 @@ urls = { Repository = "https://github.com/codingo/Interlace" }
 dependencies = [
     "netaddr==0.7.20",
     "tqdm==4.62.3",
-    "typer>=0.20.1",
+    "typer[all]>=0.20.1",
 ]
 
 [project.scripts]

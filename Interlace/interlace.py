@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import typer
+
 from typing import Optional, List
 from typing_extensions import Annotated
 from pathlib import Path
@@ -25,7 +26,12 @@ class ArgsNamespace:
         self.__dict__.update(kwargs)
 
 
+app = typer.Typer(add_completion=True)
+
+
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     target: Annotated[Optional[str], typer.Option("--target", "-t", help="Specify a target or domain name either in comma format, CIDR notation, glob notation, or a single target.")] = None,
     target_list: Annotated[Optional[Path], typer.Option("--target-list", "-tL", help="Specify a list of targets or domain names.")] = None,
     exclusions: Annotated[Optional[str], typer.Option("--exclusions", "-e", help="Specify an exclusion either in comma format, CIDR notation, or a single target.")] = None,
@@ -50,6 +56,8 @@ def main(
     """
     Easily turn single threaded command line applications into a fast, multi-threaded application with CIDR and glob support.
     """
+    if ctx.invoked_subcommand is not None:
+        return
 
     
     # Validate mutually exclusive groups
@@ -164,7 +172,7 @@ def main(
 
 
 def run():
-    typer.run(main)
+    app()
 
 if __name__ == "__main__":
     run()
